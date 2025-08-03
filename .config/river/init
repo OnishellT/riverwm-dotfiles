@@ -22,6 +22,18 @@ riverctl spawn "wl-paste --type images --watch cliphist store"
 riverctl spawn mpd
 riverctl spawn mpDris
 
+riverctl focus-follows-cursor normal
+
+# Enable Num Lock for all keyboards
+riverctl set-repeat 25 300
+for keyboard in $(riverctl list-inputs | grep keyboard | awk '{print $2}'); do
+    riverctl input "$keyboard" xkb-numlock enabled
+done
+
+# Start Bluetooth auto-connect (if not already running)
+if ! pgrep bt-auto-connect; then
+    bt-auto-connect &
+fi
 
 # Clipboard
 # Note: the "Super" modifier is also known as Logo, GUI, Windows, Mod4, etc.
@@ -292,3 +304,13 @@ riverctl hide-cursor when-typing enabled
 # River will send the process group of the init executable SIGTERM on exit.
 riverctl default-layout rivercarro
 exec rivercarro -no-smart-gaps &
+# Start PipeWire
+if [ -z "$(pgrep pipewire)" ]; then
+    pipewire &>/dev/null &
+fi
+if [ -z "$(pgrep pipewire-pulse)" ]; then
+    pipewire-pulse &>/dev/null &
+fi
+if [ -z "$(pgrep wireplumber)" ]; then
+    wireplumber &>/dev/null &
+fi
