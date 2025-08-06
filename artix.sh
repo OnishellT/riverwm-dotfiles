@@ -1,9 +1,7 @@
 #!/bin/bash
-# artix-labwc-safe.sh
-# Minimal Artix + labwc/foot/yambar (UEFI or BIOS)
-# Correct mirror order, no TIMEZONE / KEYMAP / USERNAME variable leak.
-# Run as root in the Artix live ISO.
-
+# artix-labwc-guide.sh
+# Minimal Artix + labwc/foot/yambar - follows official repo order
+# Run as root in the live ISO
 set -euo pipefail
 
 ###############################
@@ -120,17 +118,26 @@ else
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
-# mirrors & repos
-curl -fsSL https://gitea.artixlinux.org/packagesP/artix-mirrorlist/raw/branch/master/mirrorlist \
-  -o /etc/pacman.d/mirrorlist
-sed -i '/^[[:space:]]*$/d' /etc/pacman.d/mirrorlist
+###############################
+# 2-a. REPOSITORIES (GUIDE-STYLE)
+###############################
 
-pacman -Sy artix-archlinux-support --noconfirm
+# Artix mirrorlist (up-to-date GitHub copy, fallback included)
+curl -fsSL https://raw.githubusercontent.com/artix-linux/mirrorlist/master/mirrorlist \
+  -o /etc/pacman.d/mirrorlist || \
+  cat > /etc/pacman.d/mirrorlist <<'FALLBACK'
+Server = https://mirrors.dotsrc.org/artix-linux/repos/$repo/os/$arch
+Server = https://mirror.accum.se/mirror/artix-linux/repos/$repo/os/$arch
+Server = https://mirrors.atlas.net.co/artix-linux/repos/$repo/os/$arch
+FALLBACK
+
+# Arch mirrorlist (extra + multilib only)
 curl -fsSL https://archlinux.org/mirrorlist/all/ \
   | sed 's/^#Server/Server/' > /etc/pacman.d/mirrorlist-arch
 
+# Build /etc/pacman.conf exactly like the guide
 cat > /etc/pacman.conf <<'PAC'
-# Artix repositories (MUST come first)
+# Artix repositories (must be first)
 [system]
 Include = /etc/pacman.d/mirrorlist
 
@@ -154,13 +161,17 @@ PAC
 pacman-key --init
 pacman-key --populate archlinux artix
 
-# install labwc stack
+###############################
+# 2-b. INSTALL LABWC STACK
+###############################
 pacman -Syu --needed --noconfirm \
   mesa wlroots0.18 seatd xorg-xwayland \
   labwc foot yambar swaybg wofi \
   firefox dmenu grim slurp brightnessctl
 
-# enable services
+###############################
+# 2-c. ENABLE SERVICES
+###############################
 case "\$INIT" in
   runit)
     ln -s /etc/runit/sv/NetworkManager /etc/runit/runsvdir/default/
@@ -181,8 +192,8 @@ CHROOT_EOF
 ###############################
 # 3.  DOTFILES
 ###############################
-artix-chroot /mnt /bin/bash <<DOTFILES_EOF
-cd /home/$USERNAME
+artix-chroot /mnt /bin/bash <<'DOTFILES_EOF'
+cd /home/"$USERNAME"
 mkdir -p .config/{labwc,foot,yambar}
 
 cat > .config/labwc/rc.xml <<'EOF'
@@ -215,7 +226,7 @@ bar:
           format: "%H:%M"
 EOF
 
-chown -R $USERNAME:$USERNAME .config
+chown -R "$USERNAME:$USERNAME" .config
 DOTFILES_EOF
 
 ###############################
