@@ -1,4 +1,9 @@
 #!/bin/bash
+# artix-labwc-safe.sh
+# Minimal Artix + labwc/foot/yambar (UEFI or BIOS)
+# Correct mirror order, no TIMEZONE / KEYMAP / USERNAME variable leak.
+# Run as root in the Artix live ISO.
+
 set -euo pipefail
 
 ###############################
@@ -7,7 +12,7 @@ set -euo pipefail
 HOSTNAME=artixbox
 USERNAME=artix
 USERPASS=artix
-INIT=runit                     # runit | openrc | s6 | dinit
+INIT=runit
 TIMEZONE=Europe/Berlin
 KEYMAP=us
 
@@ -80,51 +85,52 @@ fstabgen -U /mnt >> /mnt/etc/fstab
 ###############################
 # 2.  CHROOT CONFIGURATION
 ###############################
-artix-chroot /mnt /bin/bash <<'CHROOT_EOF'
+artix-chroot /mnt /bin/bash <<CHROOT_EOF
 set -euo pipefail
 
-# Basic system
-echo "$HOSTNAME" > /etc/hostname
-ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
+# export variables so they are available inside the chroot
+HOSTNAME=$HOSTNAME
+USERNAME=$USERNAME
+USERPASS=$USERPASS
+TIMEZONE=$TIMEZONE
+KEYMAP=$KEYMAP
+INIT=$INIT
+FW_TYPE=$FW_TYPE
+
+# basic system
+echo "\$HOSTNAME" > /etc/hostname
+ln -sf "/usr/share/zoneinfo/\$TIMEZONE" /etc/localtime
 hwclock --systohc
 sed -i 's/^#en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
 locale-gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
-echo "KEYMAP=$KEYMAP" > /etc/vconsole.conf
+echo "KEYMAP=\$KEYMAP" > /etc/vconsole.conf
 
-# Users
-echo "root:$USERPASS" | chpasswd
-useradd -m -G wheel,video,input "$USERNAME"
-echo "$USERNAME:$USERPASS" | chpasswd
+# users
+echo "root:\$USERPASS" | chpasswd
+useradd -m -G wheel,video,input "\$USERNAME"
+echo "\$USERNAME:\$USERPASS" | chpasswd
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
-# Bootloader
-if [[ $FW_TYPE == UEFI ]]; then
+# bootloader
+if [[ \$FW_TYPE == UEFI ]]; then
   grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable
 else
   grub-install --target=i386-pc "$DISK"
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
-###############################
-# 2-a. CORRECT REPO LAYOUT
-###############################
-
-# 1) Fresh Artix mirrorlist
+# mirrors & repos
 curl -fsSL https://gitea.artixlinux.org/packagesP/artix-mirrorlist/raw/branch/master/mirrorlist \
   -o /etc/pacman.d/mirrorlist
 sed -i '/^[[:space:]]*$/d' /etc/pacman.d/mirrorlist
 
-# 2) Install helper + Arch keyring
 pacman -Sy artix-archlinux-support --noconfirm
-
-# 3) Arch mirrorlist (extra & multilib only)
 curl -fsSL https://archlinux.org/mirrorlist/all/ \
   | sed 's/^#Server/Server/' > /etc/pacman.d/mirrorlist-arch
 
-# 4) Build /etc/pacman.conf in the **correct order**
 cat > /etc/pacman.conf <<'PAC'
-# Artix repositories (MUST be first)
+# Artix repositories (MUST come first)
 [system]
 Include = /etc/pacman.d/mirrorlist
 
@@ -145,22 +151,17 @@ Include = /etc/pacman.d/mirrorlist-arch
 Include = /etc/pacman.d/mirrorlist-arch
 PAC
 
-# 5) Populate keys
 pacman-key --init
 pacman-key --populate archlinux artix
 
-###############################
-# 2-b. INSTALL LABWC SUITE
-###############################
+# install labwc stack
 pacman -Syu --needed --noconfirm \
   mesa wlroots0.18 seatd xorg-xwayland \
   labwc foot yambar swaybg wofi \
   firefox dmenu grim slurp brightnessctl
 
-###############################
-# 2-c. ENABLE SERVICES
-###############################
-case "$INIT" in
+# enable services
+case "\$INIT" in
   runit)
     ln -s /etc/runit/sv/NetworkManager /etc/runit/runsvdir/default/
     ln -s /etc/runit/sv/elogind        /etc/runit/runsvdir/default/
@@ -180,11 +181,10 @@ CHROOT_EOF
 ###############################
 # 3.  DOTFILES
 ###############################
-artix-chroot /mnt /bin/bash <<'DOTFILES_EOF'
+artix-chroot /mnt /bin/bash <<DOTFILES_EOF
 cd /home/$USERNAME
-sudo -u $USERNAME mkdir -p .config/{labwc,foot,yambar}
+mkdir -p .config/{labwc,foot,yambar}
 
-# minimal labwc config
 cat > .config/labwc/rc.xml <<'EOF'
 <labwc_config>
   <keyboard>
@@ -196,13 +196,11 @@ cat > .config/labwc/rc.xml <<'EOF'
 </labwc_config>
 EOF
 
-# foot
 cat > .config/foot/foot.ini <<'EOF'
 [main]
 font=JetBrainsMono Nerd Font:size=10
 EOF
 
-# yambar
 cat > .config/yambar/config.yml <<'EOF'
 bar:
   height: 24
