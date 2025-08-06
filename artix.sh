@@ -2,6 +2,48 @@
 # artix-labwc-install.sh  – minimal Artix + labwc/foot/yambar
 # Run as root from the Artix live ISO.
 
+########################################
+# 0-a. Interactive disk / partition picker
+########################################
+echo
+echo "=== Available block devices ==="
+lsblk -p -n -o NAME,SIZE,TYPE | grep disk
+echo
+
+read -rp "Enter the full path of the target disk (e.g. /dev/sda): " DISK
+[[ -b $DISK ]] || { echo "ERROR: $DISK is not a block device"; exit 1; }
+
+echo
+echo "1) Auto-partition the entire disk (UEFI, 512 MiB ESP, rest root)"
+echo "2) Use existing partitions"
+read -rp "Choose (1/2): " MODE
+case $MODE in
+  1)
+    read -rp "This will DESTROY all data on $DISK. Type 'yes' to proceed: " CONFIRM
+    [[ $CONFIRM == "yes" ]] || { echo "Aborted."; exit 1; }
+    wipefs -a "$DISK"
+    parted "$DISK" --script \
+      mklabel gpt \
+      mkpart ESP fat32 1MiB 513MiB \
+      set 1 esp on \
+      mkpart ROOT ext4 513MiB 100%
+    EFI_PART="${DISK}1"
+    ROOT_PART="${DISK}2"
+    mkfs.fat -F32 "$EFI_PART"
+    mkfs.ext4 -L ROOT "$ROOT_PART"
+    ;;
+  2)
+    echo
+    lsblk -p -n -o NAME,SIZE,FSTYPE,MOUNTPOINT | grep -v loop
+    read -rp "Enter root partition (e.g. ${DISK}2): " ROOT_PART
+    [[ -b $ROOT_PART ]] || { echo "Invalid root partition"; exit 1; }
+    read -rp "Enter EFI partition (e.g. ${DISK}1): " EFI_PART
+    [[ -b $EFI_PART ]] || { echo "Invalid EFI partition"; exit 1; }
+    ;;
+  *)
+    echo "Invalid choice"; exit 1 ;;
+esac
+
 set -euo pipefail
 
 ########################################
