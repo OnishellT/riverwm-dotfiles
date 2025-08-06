@@ -1,6 +1,19 @@
 #!/bin/bash
-# artix-labwc-install.sh  – minimal Artix + labwc/foot/yambar
-# Run as root from the Artix live ISO.
+# artix-labwc-install.sh
+# Minimal Artix + labwc/foot/yambar with interactive disk picker
+# Run as root in the live ISO.
+
+set -euo pipefail
+
+########################################
+# 0.  Basic variables – you can still hard-code
+########################################
+HOSTNAME=artixbox
+USERNAME=artix
+USERPASS=artix
+INIT=runit                   # runit | openrc | s6 | dinit
+TIMEZONE=Europe/Berlin
+KEYMAP=us
 
 ########################################
 # 0-a. Interactive disk / partition picker
@@ -44,37 +57,8 @@ case $MODE in
     echo "Invalid choice"; exit 1 ;;
 esac
 
-set -euo pipefail
-
 ########################################
-# 0.  Basic variables – EDIT THESE
-########################################
-DISK=/dev/sda                # install target disk
-ROOT_PART=${DISK}2           # adjust to your layout
-EFI_PART=${DISK}1            # UEFI only
-HOSTNAME=artixbox
-USERNAME=artix
-USERPASS=artix
-INIT=runit                   # or openrc / s6 / dinit
-TIMEZONE=Europe/Berlin
-KEYMAP=us
-
-########################################
-# 1.  Partitioning (simple UEFI example)
-########################################
-# If you want to keep existing partitions or use BIOS/LUKS, skip this block
-wipefs -a "$DISK"
-parted "$DISK" --script \
-  mklabel gpt \
-  mkpart ESP fat32 1MiB 512MiB \
-  set 1 esp on \
-  mkpart ROOT ext4 512MiB 100%
-
-mkfs.fat -F32 "$EFI_PART"
-mkfs.ext4 -L ROOT "$ROOT_PART"
-
-########################################
-# 2.  Mount & bootstrap base
+# 1.  Mount & bootstrap base
 ########################################
 mount "$ROOT_PART" /mnt
 mkdir -p /mnt/boot/efi
@@ -87,7 +71,7 @@ basestrap /mnt \
 fstabgen -U /mnt >> /mnt/etc/fstab
 
 ########################################
-# 3.  Chroot configuration
+# 2.  Chroot configuration
 ########################################
 artix-chroot /mnt /bin/bash <<EOF
 set -euo pipefail
@@ -108,7 +92,7 @@ echo "$USERNAME:$USERPASS" | chpasswd
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
 # bootloader
-grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable
 grub-mkconfig -o /boot/grub/grub.cfg
 
 # enable basic services
@@ -128,7 +112,7 @@ esac
 EOF
 
 ########################################
-# 4.  Install graphics stack & apps
+# 3.  Install graphics stack & apps
 ########################################
 artix-chroot /mnt /bin/bash <<EOF
 set -euo pipefail
@@ -153,7 +137,7 @@ esac
 EOF
 
 ########################################
-# 5.  Minimal dotfiles skeleton
+# 4.  Minimal dotfiles skeleton
 ########################################
 artix-chroot /mnt /bin/bash <<EOF
 set -euo pipefail
@@ -197,7 +181,7 @@ chown -R $USERNAME:$USERNAME .config
 EOF
 
 ########################################
-# 6.  Finish
+# 5.  Finish
 ########################################
 umount -R /mnt
 echo
