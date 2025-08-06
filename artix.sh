@@ -1,7 +1,5 @@
 #!/bin/bash
-# artix-labwc-guide.sh
-# Minimal Artix + labwc/foot/yambar - follows official repo order
-# Run as root in the live ISO
+# artix-labwc-guide.sh  – minimal Artix + labwc/foot/yambar
 set -euo pipefail
 
 ###############################
@@ -86,56 +84,39 @@ fstabgen -U /mnt >> /mnt/etc/fstab
 artix-chroot /mnt /bin/bash <<CHROOT_EOF
 set -euo pipefail
 
-# export variables so they are available inside the chroot
-HOSTNAME=$HOSTNAME
-USERNAME=$USERNAME
-USERPASS=$USERPASS
-TIMEZONE=$TIMEZONE
-KEYMAP=$KEYMAP
-INIT=$INIT
-FW_TYPE=$FW_TYPE
+# --- export variables for use inside chroot
+export HOSTNAME=$HOSTNAME
+export USERNAME=$USERNAME
+export USERPASS=$USERPASS
+export TIMEZONE=$TIMEZONE
+export KEYMAP=$KEYMAP
+export INIT=$INIT
+export FW_TYPE=$FW_TYPE
 
 # basic system
-echo "\$HOSTNAME" > /etc/hostname
-ln -sf "/usr/share/zoneinfo/\$TIMEZONE" /etc/localtime
+echo "$HOSTNAME" > /etc/hostname
+ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
 hwclock --systohc
 sed -i 's/^#en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
 locale-gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
-echo "KEYMAP=\$KEYMAP" > /etc/vconsole.conf
+echo "KEYMAP=$KEYMAP" > /etc/vconsole.conf
 
 # users
-echo "root:\$USERPASS" | chpasswd
-useradd -m -G wheel,video,input "\$USERNAME"
-echo "\$USERNAME:\$USERPASS" | chpasswd
+echo "root:$USERPASS" | chpasswd
+useradd -m -G wheel,video,input "$USERNAME"
+echo "$USERNAME:$USERPASS" | chpasswd
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
 # bootloader
-if [[ \$FW_TYPE == UEFI ]]; then
+if [[ $FW_TYPE == UEFI ]]; then
   grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable
 else
   grub-install --target=i386-pc "$DISK"
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
-###############################
-# 2-a. REPOSITORIES (GUIDE-STYLE)
-###############################
-
-# Artix mirrorlist (up-to-date GitHub copy, fallback included)
-curl -fsSL https://raw.githubusercontent.com/artix-linux/mirrorlist/master/mirrorlist \
-  -o /etc/pacman.d/mirrorlist || \
-  cat > /etc/pacman.d/mirrorlist <<'FALLBACK'
-Server = https://mirrors.dotsrc.org/artix-linux/repos/$repo/os/$arch
-Server = https://mirror.accum.se/mirror/artix-linux/repos/$repo/os/$arch
-Server = https://mirrors.atlas.net.co/artix-linux/repos/$repo/os/$arch
-FALLBACK
-
-# Arch mirrorlist (extra + multilib only)
-curl -fsSL https://archlinux.org/mirrorlist/all/ \
-  | sed 's/^#Server/Server/' > /etc/pacman.d/mirrorlist-arch
-
-# Build /etc/pacman.conf exactly like the guide
+# --- repositories (guide-style) ---
 cat > /etc/pacman.conf <<'PAC'
 # Artix repositories (must be first)
 [system]
@@ -158,21 +139,29 @@ Include = /etc/pacman.d/mirrorlist-arch
 Include = /etc/pacman.d/mirrorlist-arch
 PAC
 
+# mirrorlists
+curl -fsSL https://raw.githubusercontent.com/artix-linux/mirrorlist/master/mirrorlist \
+  -o /etc/pacman.d/mirrorlist || \
+  cat > /etc/pacman.d/mirrorlist <<'FALLBACK'
+Server = https://mirrors.dotsrc.org/artix-linux/repos/$repo/os/$arch
+Server = https://mirror.accum.se/mirror/artix-linux/repos/$repo/os/$arch
+Server = https://mirrors.atlas.net.co/artix-linux/repos/$repo/os/$arch
+FALLBACK
+
+curl -fsSL https://archlinux.org/mirrorlist/all/ \
+  | sed 's/^#Server/Server/' > /etc/pacman.d/mirrorlist-arch
+
 pacman-key --init
 pacman-key --populate archlinux artix
 
-###############################
-# 2-b. INSTALL LABWC STACK
-###############################
+# install labwc stack
 pacman -Syu --needed --noconfirm \
   mesa wlroots0.18 seatd xorg-xwayland \
   labwc foot yambar swaybg wofi \
   firefox dmenu grim slurp brightnessctl
 
-###############################
-# 2-c. ENABLE SERVICES
-###############################
-case "\$INIT" in
+# enable services
+case "$INIT" in
   runit)
     ln -s /etc/runit/sv/NetworkManager /etc/runit/runsvdir/default/
     ln -s /etc/runit/sv/elogind        /etc/runit/runsvdir/default/
@@ -193,7 +182,7 @@ CHROOT_EOF
 # 3.  DOTFILES
 ###############################
 artix-chroot /mnt /bin/bash <<'DOTFILES_EOF'
-cd /home/"$USERNAME"
+cd "/home/$USERNAME"
 mkdir -p .config/{labwc,foot,yambar}
 
 cat > .config/labwc/rc.xml <<'EOF'
