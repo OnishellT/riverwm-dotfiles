@@ -2,6 +2,7 @@
 # artix-labwc-install.sh  – minimal Artix + labwc/foot/yambar
 #   – pulls labwc from Arch extra repo
 #   – supports UEFI & BIOS
+#   – bullet-proof mirrorlist (Artix + Arch)
 # Run as root in the live ISO.
 
 set -euo pipefail
@@ -82,8 +83,7 @@ case $MODE in
       EFI_PART=""
     fi
     ;;
-  *)
-    echo "Invalid choice"; exit 1 ;;
+  *) echo "Invalid choice"; exit 1 ;;
 esac
 
 ########################################
@@ -114,10 +114,7 @@ locale-gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
 echo "KEYMAP=$KEYMAP"  > /etc/vconsole.conf
 
-# root password
 echo "root:$USERPASS" | chpasswd
-
-# new user + sudo
 useradd -m -G wheel,video,input "$USERNAME"
 echo "$USERNAME:$USERPASS" | chpasswd
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
@@ -130,13 +127,18 @@ else
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
-# fresh Artix mirrorlist
-curl -s https://gitea.artixlinux.org/packagesP/artix-mirrorlist/raw/branch/master/mirrorlist \
-  > /etc/pacman.d/mirrorlist
+########################################
+# Mirror & repo bootstrap
+########################################
 
-# add Arch repos & keyring
-pacman -Sy artix-archlinux-support --noconfirm
-curl -s https://archlinux.org/mirrorlist/all/ \
+# 1. bullet-proof Artix mirrorlist
+curl -fsSL https://gitea.artixlinux.org/packagesP/artix-mirrorlist/raw/branch/master/mirrorlist \
+  > /etc/pacman.d/mirrorlist
+sed -i '/^[[:space:]]*$/d' /etc/pacman.d/mirrorlist
+
+# 2. add Arch repos & keyring
+pacman -Sy --noconfirm artix-archlinux-support
+curl -fsSL https://archlinux.org/mirrorlist/all/ \
   | sed 's/^#Server/Server/' > /etc/pacman.d/mirrorlist-arch
 
 cat >> /etc/pacman.conf <<'ARCH_REPOS'
@@ -159,14 +161,14 @@ pacman-key --init
 pacman-key --populate archlinux
 
 ########################################
-# 3.  Install graphics stack & apps
+# Install labwc stack
 ########################################
 pacman -S --needed --noconfirm \
   mesa wlroots0.18 seatd xorg-xwayland \
   labwc foot yambar swaybg wofi \
   firefox dmenu grim slurp brightnessctl
 
-# enable services inside the installed system
+# enable services
 case "$INIT" in
   runit)
     ln -s /etc/runit/sv/NetworkManager /etc/runit/runsvdir/default/
@@ -185,14 +187,13 @@ esac
 EOF
 
 ########################################
-# 4.  Minimal dotfiles skeleton
+# 3.  Minimal dotfiles skeleton
 ########################################
 artix-chroot /mnt /bin/bash <<EOF
 set -euo pipefail
 cd /home/$USERNAME
 sudo -u $USERNAME mkdir -p .config/{labwc,foot,yambar}
 
-# labwc rc
 sudo -u $USERNAME tee .config/labwc/rc.xml >/dev/null <<'LABWC'
 <labwc_config>
   <keyboard>
@@ -204,13 +205,11 @@ sudo -u $USERNAME tee .config/labwc/rc.xml >/dev/null <<'LABWC'
 </labwc_config>
 LABWC
 
-# foot.ini
 sudo -u $USERNAME tee .config/foot/foot.ini >/dev/null <<'FOOT'
 [main]
 font=JetBrainsMono Nerd Font:size=10
 FOOT
 
-# yambar.yml
 sudo -u $USERNAME tee .config/yambar/config.yml >/dev/null <<'YAMBAR'
 bar:
   height: 24
@@ -229,7 +228,7 @@ chown -R $USERNAME:$USERNAME .config
 EOF
 
 ########################################
-# 5.  Finish
+# 4.  Finish
 ########################################
 umount -R /mnt
 echo
