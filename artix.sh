@@ -81,7 +81,7 @@ fstabgen -U /mnt >> /mnt/etc/fstab
 ###############################
 # 2.  CHROOT CONFIGURATION
 ###############################
-artix-chroot /mnt /bin/bash <<CHROOT_EOF
+artix-chroot /mnt /bin/bash <<'CHROOT_EOF'
 set -euo pipefail
 
 # export once, use everywhere
@@ -135,15 +135,15 @@ Include = /etc/pacman.d/mirrorlist-arch
 Include = /etc/pacman.d/mirrorlist-arch
 PAC
 
-curl -fsSL https://raw.githubusercontent.com/artix-linux/mirrorlist/master/mirrorlist \
+curl -fsSL https://raw.githubusercontent.com/artix-linux/mirrorlist/master/mirrorlist   \
   -o /etc/pacman.d/mirrorlist || \
   cat > /etc/pacman.d/mirrorlist <<'FALLBACK'
-Server = https://mirrors.dotsrc.org/artix-linux/repos/$repo/os/$arch
-Server = https://mirror.accum.se/mirror/artix-linux/repos/$repo/os/$arch
-Server = https://mirrors.atlas.net.co/artix-linux/repos/$repo/os/$arch
+Server = https://mirrors.dotsrc.org/artix-linux/repos/  $repo/os/$arch
+Server = https://mirror.accum.se/mirror/artix-linux/repos/  $repo/os/$arch
+Server = https://mirrors.atlas.net.co/artix-linux/repos/  $repo/os/$arch
 FALLBACK
 
-curl -fsSL https://archlinux.org/mirrorlist/all/ \
+curl -fsSL https://archlinux.org/mirrorlist/all/   \
   | sed 's/^#Server/Server/' > /etc/pacman.d/mirrorlist-arch
 
 pacman-key --init
