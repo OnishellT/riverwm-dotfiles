@@ -1,9 +1,8 @@
 #!/bin/bash
-# artix-labwc-install.sh
-# Minimal Artix + labwc/foot/yambar with interactive disk picker
-#   – supports BOTH UEFI and BIOS (Legacy) firmware
-#   – enables services inside the installed system
-# Run as root in the Artix live ISO.
+# artix-labwc-install.sh  – minimal Artix + labwc/foot/yambar
+#   – pulls labwc from Arch extra repo
+#   – supports UEFI & BIOS
+# Run as root in the live ISO.
 
 set -euo pipefail
 
@@ -31,7 +30,7 @@ read -rp "Enter the full path of the target disk (e.g. /dev/sda): " DISK
 # 0-b. Firmware type (UEFI vs BIOS)
 ########################################
 echo
-echo "1) UEFI firmware  (needs ESP partition)"
+echo "1) UEFI firmware (needs ESP partition)"
 echo "2) BIOS / Legacy firmware"
 read -rp "Choose firmware type (1/2): " FW_TYPE
 case $FW_TYPE in
@@ -131,6 +130,42 @@ else
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
+# fresh Artix mirrorlist
+curl -s https://gitea.artixlinux.org/packagesP/artix-mirrorlist/raw/branch/master/mirrorlist \
+  > /etc/pacman.d/mirrorlist
+
+# add Arch repos & keyring
+pacman -Sy artix-archlinux-support --noconfirm
+curl -s https://archlinux.org/mirrorlist/all/ \
+  | sed 's/^#Server/Server/' > /etc/pacman.d/mirrorlist-arch
+
+cat >> /etc/pacman.conf <<'ARCH_REPOS'
+
+# Arch
+[core]
+Include = /etc/pacman.d/mirrorlist-arch
+
+[extra]
+Include = /etc/pacman.d/mirrorlist-arch
+
+[community]
+Include = /etc/pacman.d/mirrorlist-arch
+
+[multilib]
+Include = /etc/pacman.d/mirrorlist-arch
+ARCH_REPOS
+
+pacman-key --init
+pacman-key --populate archlinux
+
+########################################
+# 3.  Install graphics stack & apps
+########################################
+pacman -S --needed --noconfirm \
+  mesa wlroots0.18 seatd xorg-xwayland \
+  labwc foot yambar swaybg wofi \
+  firefox dmenu grim slurp brightnessctl
+
 # enable services inside the installed system
 case "$INIT" in
   runit)
@@ -144,29 +179,9 @@ case "$INIT" in
     rc-update add seatd default
     ;;
   s6|dinit)
-    echo "FIXME: add s6/dinit service enablement"
+    echo "TODO: add s6/dinit service enablement"
     ;;
 esac
-EOF
-
-########################################
-# 3.  Install graphics stack & apps
-########################################
-artix-chroot /mnt /bin/bash <<EOF
-set -euo pipefail
-# Mesa + wayland
-pacman -S --needed --noconfirm \
-  mesa wlroots seatd xorg-xwayland
-
-# compositor, terminal, panel
-pacman -S --needed --noconfirm \
-  labwc foot yambar swaybg wofi
-
-# extra helpers
-pacman -S --needed --noconfirm \
-  firefox dmenu grim slurp brightnessctl
-
-# enable seatd service (already done in step 2 for runit/openrc)
 EOF
 
 ########################################
